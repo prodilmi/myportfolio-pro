@@ -1,10 +1,33 @@
+<?php
+/**
+ * .htaccess - URL Rewriting and Security
+ */
+?>
+# Enable mod_rewrite
 RewriteEngine On
-RewriteBase /
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^([a-zA-Z0-9_-]+)/?$ index.php?page=$1 [QSA,L]
-Options -Indexes
-<FilesMatch "\.(env|yml|yaml|md|sql)$">
+
+# Set base directory
+RewriteBase /myportfolio-pro/
+
+# Prevent direct access to sensitive folders
+<FilesMatch "\.env|composer\.json|composer\.lock">
     Order allow,deny
     Deny from all
 </FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# Set proper headers
+<IfModule mod_headers.c>
+    # Security headers
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Gzip compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
