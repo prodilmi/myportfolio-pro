@@ -1,45 +1,67 @@
 <?php
 /**
- * Main Entry Point
+ * Main Index - Router
  */
 
-require_once __DIR__ . '/app/bootstrap.php';
+define('APP_ROOT', __DIR__);
+require_once APP_ROOT . '/app/bootstrap.php';
 
-use App\Core\Request;
-use App\Core\Response;
 use App\Core\Auth;
 
-$response = new Response();
-$page = Request::getQuery('page', 'home');
+$auth = new Auth($db);
+$page = isset($_GET['page']) ? $_GET['page'] : 'home';
 
-// Route to appropriate page
+// Public pages
+$public_pages = ['login', 'register', 'home'];
+
+// Redirect to login if not authenticated and trying to access protected page
+if (!$auth->isAuthenticated() && !in_array($page, $public_pages)) {
+    header('Location: ' . BASE_URL . 'index.php?page=login');
+    exit;
+}
+
+// Route handler
 switch ($page) {
+    case 'home':
+        require_once APP_ROOT . '/pages/home.php';
+        break;
     case 'login':
-        require 'pages/login.php';
+        if ($auth->isAuthenticated()) {
+            header('Location: ' . BASE_URL . 'index.php?page=dashboard');
+            exit;
+        }
+        require_once APP_ROOT . '/pages/login.php';
         break;
     case 'register':
-        require 'pages/register.php';
-        break;
-    case 'logout':
-        $auth = new Auth($db);
-        $auth->logout();
-        $response->redirect(BASE_URL . 'index.php?page=home');
+        if ($auth->isAuthenticated()) {
+            header('Location: ' . BASE_URL . 'index.php?page=dashboard');
+            exit;
+        }
+        require_once APP_ROOT . '/pages/register.php';
         break;
     case 'dashboard':
-        $auth = new Auth($db);
-        $auth->require();
-        require 'pages/dashboard.php';
+        require_once APP_ROOT . '/pages/dashboard.php';
         break;
-    case 'portfolio':
-        $auth = new Auth($db);
-        $auth->require();
-        require 'pages/portfolio.php';
+    case 'portfolios':
+        require_once APP_ROOT . '/pages/portfolios.php';
+        break;
+    case 'portfolio-detail':
+        require_once APP_ROOT . '/pages/portfolio-detail.php';
+        break;
+    case 'trading-history':
+        require_once APP_ROOT . '/pages/trading-history.php';
+        break;
+    case 'broker-integration':
+        require_once APP_ROOT . '/pages/broker-integration.php';
+        break;
+    case 'notifications':
+        require_once APP_ROOT . '/pages/notifications.php';
         break;
     case 'settings':
-        $auth = new Auth($db);
-        $auth->require();
-        require 'pages/settings.php';
+        require_once APP_ROOT . '/pages/settings.php';
         break;
     default:
-        require 'pages/home.php';
+        header('HTTP/1.0 404 Not Found');
+        echo '404 - Page not found';
+        break;
 }

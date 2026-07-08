@@ -1,93 +1,32 @@
 <?php
 /**
- * HTTP Request Handler
- * @package MyPortfolioPro\Core
+ * Request Handler
  */
 
 namespace App\Core;
 
-class Request
-{
-    public static function getMethod(): string
-    {
-        return strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+class Request {
+    public static function getMethod() {
+        return $_SERVER['REQUEST_METHOD'];
     }
-
-    public static function isPost(): bool
-    {
-        return self::getMethod() === 'POST';
-    }
-
-    public static function isGet(): bool
-    {
-        return self::getMethod() === 'GET';
-    }
-
-    public static function isPut(): bool
-    {
-        return self::getMethod() === 'PUT';
-    }
-
-    public static function isDelete(): bool
-    {
-        return self::getMethod() === 'DELETE';
-    }
-
-    public static function isAjax(): bool
-    {
-        return isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
-               strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-    }
-
-    public static function getPost(string $key, mixed $default = null): mixed
-    {
-        return $_POST[$key] ?? $default;
-    }
-
-    public static function getQuery(string $key, mixed $default = null): mixed
-    {
+    
+    public static function getQuery($key, $default = null) {
         return $_GET[$key] ?? $default;
     }
-
-    public static function getInput(string $key, mixed $default = null): mixed
-    {
-        return $_POST[$key] ?? $_GET[$key] ?? $default;
+    
+    public static function getPost($key, $default = null) {
+        return $_POST[$key] ?? $default;
     }
-
-    public static function getJsonData(): array
-    {
-        $input = file_get_contents('php://input');
-        return json_decode($input, true) ?? [];
+    
+    public static function getInput($key, $default = null) {
+        $json = json_decode(file_get_contents('php://input'), true);
+        return $json[$key] ?? $default;
     }
-
-    public static function getHeaders(): array
-    {
-        return getallheaders();
-    }
-
-    public static function getHeader(string $key, string $default = ''): string
-    {
-        $headers = getallheaders();
-        return $headers[$key] ?? $default;
-    }
-
-    public static function getIp(): string
-    {
-        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-            return $_SERVER['HTTP_CF_CONNECTING_IP'];
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            return $_SERVER['HTTP_X_FORWARDED_FOR'];
+    
+    public static function all() {
+        if (self::getMethod() === 'POST') {
+            return $_POST;
         }
-        return $_SERVER['REMOTE_ADDR'] ?? '';
-    }
-
-    public static function getUserAgent(): string
-    {
-        return $_SERVER['HTTP_USER_AGENT'] ?? '';
-    }
-
-    public static function getReferer(): string
-    {
-        return $_SERVER['HTTP_REFERER'] ?? '';
+        return $_GET;
     }
 }

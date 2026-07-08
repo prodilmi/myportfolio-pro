@@ -1,94 +1,80 @@
 <?php
 /**
- * Authentication Handler
- * @package MyPortfolioPro\Core
+ * Authentication Class
  */
 
 namespace App\Core;
 
-class Auth
-{
-    private Database $db;
-
-    public function __construct(Database $db)
-    {
-        $this->db = $db;
-        Session::start();
+class Auth {
+    private $db;
+    const SESSION_KEY = 'user_id';
+    
+    public function __construct($database) {
+        $this->db = $database;
     }
-
-    public function login(string $username, string $password): bool
-    {
-        $user = $this->db->find('users', ['username' => $username]);
+    
+    /**
+     * Register a new user
+     */
+    public function register($email, $password, $first_name, $last_name) {
+        // Check if user exists
+        $existing = $this->db->findOne('users', ['email' => $email]);
+        if ($existing) {
+            return ['success' => false, 'message' => 'Email already registered'];
+        }
         
-        if (!$user) {
-            return false;
-        }
-
-        if (!password_verify($password, $user['password_hash'])) {
-            return false;
-        }
-
-        Session::regenerate();
-        Session::set('user_id', $user['id']);
-        Session::set('username', $user['username']);
-        Session::set('email', $user['email']);
-        Session::set('first_name', $user['first_name']);
-        Session::set('last_name', $user['last_name']);
-
-        $this->db->update('users', ['last_login' => date('Y-m-d H:i:s')], ['id' => $user['id']]);
-
-        return true;
-    }
-
-    public function logout(): void
-    {
-        Session::destroy();
-    }
-
-    public function register(string $username, string $email, string $password, string $firstName = '', string $lastName = ''): bool|string
-    {
-        if ($this->db->find('users', ['username' => $username])) {
-            return 'Username already exists';
-        }
-
-        if ($this->db->find('users', ['email' => $email])) {
-            return 'Email already exists';
-        }
-
-        $data = [
-            'username' => $username,
+        // Create user
+        $user_id = $this->db->insert('users', [
             'email' => $email,
-            'password_hash' => password_hash($password, PASSWORD_BCRYPT, ['cost' => PASSWORD_HASH_COST]),
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-        ];
-
-        return $this->db->insert('users', $data) ? true : 'Registration failed';
+            'password' => password_hash($password, PASSWORD_BCRYPT),
+            'first_name' => $first_name,
+            'last_name' => $last_name
+        ]);
+        
+        // Set session
+        $_SESSION[self::SESSION_KEY] = $user_id;
+        
+        return ['success' => true, 'user_id' => $user_id];
     }
-
-    public function isAuthenticated(): bool
-    {
-        return Session::has('user_id');
-    }
-
-    public function getUser(): bool|array
-    {
-        if (!$this->isAuthenticated()) {
-            return false;
+    
+    /**
+     * Login user
+     */
+    public function login($email, $password) {
+        $user = $this->db->findOne('users', ['email' => $email]);
+        
+        if (!$user || !password_verify($password, $user['password'])) {
+            return ['success' => false, 'message' => 'Invalid credentials'];
         }
-        return $this->db->find('users', ['id' => Session::get('user_id')]);
+        
+        $_SESSION[self::SESSION_KEY] = $user['id'];
+        
+        return ['success' => true, 'user_id' => $user['id']];
     }
-
-    public function getUserId(): mixed
-    {
-        return Session::get('user_id');
+    
+    /**
+     * Check if user is authenticated
+     */
+    public function isAuthenticated() {
+        return isset($_SESSION[self::SESSION_KEY]);
     }
-
-    public function require(): void
-    {
+    
+    /**
+     * Get current user
+     */
+    public function getUser() {
         if (!$this->isAuthenticated()) {
-            header('Location: ' . BASE_URL . 'login.php');
-            exit;
+            return null;
         }
+        
+        return $this->db->findOne('users', ['id' => $_SESSION[self::SESSION_KEY]]);
+    }
+    
+    /**
+     * Logout user
+     */
+    public function logout() {
+        unset($_SESSION[self::SESSION_KEY]);
+        session_destroy();
     }
 }

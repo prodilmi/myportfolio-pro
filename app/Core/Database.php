@@ -1,183 +1,149 @@
 <?php
 /**
- * Database Connection Handler
- * @package MyPortfolioPro\Core
+ * Database Connection Class
  */
 
 namespace App\Core;
 
-use PDO;
-use PDOException;
-
-class Database
-{
-    private static ?Database $instance = null;
-    private ?PDO $connection = null;
-    private array $config;
-
-    private function __construct(array $config)
-    {
-        $this->config = $config;
-        $this->connect();
+class Database {
+    private static $instance = null;
+    private $connection;
+    
+    private function __construct($config) {
+        $this->connection = new \mysqli(
+            $config['host'],
+            $config['user'],
+            $config['password'],
+            $config['database']
+        );
+        
+        if ($this->connection->connect_error) {
+            die('Connection failed: ' . $this->connection->connect_error);
+        }
+        
+        $this->connection->set_charset('utf8mb4');
     }
-
-    public static function getInstance(array $config = []): Database
-    {
+    
+    public static function connect($config) {
         if (self::$instance === null) {
             self::$instance = new self($config);
         }
-        return self::$instance;
+        return self::$instance->connection;
     }
-
-    private function connect(): void
-    {
-        try {
-            $dsn = sprintf(
-                '%s:host=%s;port=%d;dbname=%s;charset=%s',
-                $this->config['driver'],
-                $this->config['host'],
-                $this->config['port'],
-                $this->config['database'],
-                $this->config['charset']
-            );
-
-            $this->connection = new PDO(
-                $dsn,
-                $this->config['username'],
-                $this->config['password'],
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                ]
-            );
-        } catch (PDOException $e) {
-            die('Database connection failed: ' . $e->getMessage());
+    
+    public function query($sql) {
+        return $this->connection->query($sql);
+    }
+    
+    public function insert($table, $data) {
+        $columns = implode(', ', array_keys($data));
+        $values = implode(', ', array_fill(0, count($data), '?'));
+        $sql = "INSERT INTO $table ($columns) VALUES ($values)";
+        
+        $stmt = $this->connection->prepare($sql);
+        $types = str_repeat('s', count($data));
+        $stmt->bind_param($types, ...array_values($data));
+        $stmt->execute();
+        
+        return $this->connection->insert_id;
+    }
+    
+    public function findOne($table, $where) {
+        $conditions = [];
+        $values = [];
+        foreach ($where as $key => $value) {
+            $conditions[] = "$key = ?";
+            $values[] = $value;
         }
-    }
-
-    public function getConnection(): PDO
-    {
-        return $this->connection;
-    }
-
-    public function query(string $sql, array $params = []): bool|array
-    {
-        try {
-            $stmt = $this->connection->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll();
-        } catch (PDOException $e) {
-            error_log($e->getMessage());
-            return false;
+        $sql = "SELECT * FROM $table WHERE " . implode(' AND ', $conditions) . " LIMIT 1";
+        
+        $stmt = $this->connection->prepare($sql);
+        $types = str_repeat('s', count($values));
+        if (!empty($values)) {
+            $stmt->bind_param($types, ...$values);
         }
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        return $result->fetch_assoc();
     }
-
-    public function execute(string $sql, array $params = []): bool
-    {
-        try {
-            $stmt = $this->connection->prepare($sql);
-            return $stmt->execute($params);
-        } catch (PDOException $e) {
-            error_log($e->getMessage());
-            return false;
+    
+    public function findAll($table, $where = [], $options = []) {
+        $conditions = [];
+        $values = [];
+        foreach ($where as $key => $value) {
+            $conditions[] = "$key = ?";
+            $values[] = $value;
         }
-    }
-
-    public function insert(string $table, array $data): bool|int
-    {
-        $columns = array_keys($data);
-        $placeholders = array_fill(0, count($columns), '?');
-        $sql = sprintf(
-            'INSERT INTO `%s` (%s) VALUES (%s)',
-            $table,
-            '`' . implode('`, `', $columns) . '`',
-            implode(', ', $placeholders)
-        );
-
-        if ($this->execute($sql, array_values($data))) {
-            return $this->connection->lastInsertId();
+        
+        $sql = "SELECT * FROM $table";
+        if (!empty($conditions)) {
+            $sql .= " WHERE " . implode(' AND ', $conditions);
         }
-        return false;
+        
+        if (isset($options['order_by'])) {
+            $sql .= " ORDER BY " . $options['order_by'];
+        }
+        if (isset($options['limit'])) {
+            $sql .= " LIMIT " . $options['limit'];
+        }
+        
+        $stmt = $this->connection->prepare($sql);
+        $types = str_repeat('s', count($values));
+        if (!empty($values)) {
+            $stmt->bind_param($types, ...$values);
+        }
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+        
+        return $rows;
     }
-
-    public function update(string $table, array $data, array $where): bool
-    {
+    
+    public function update($table, $data, $where) {
         $set = [];
-        foreach (array_keys($data) as $key) {
-            $set[] = "`{$key}` = ?";
+        $values = [];
+        foreach ($data as $key => $value) {
+            $set[] = "$key = ?";
+            $values[] = $value;
         }
-
-        $conditions = [];
-        foreach (array_keys($where) as $key) {
-            $conditions[] = "`{$key}` = ?";
+        
+        foreach ($where as $key => $value) {
+            $values[] = $value;
         }
-
-        $sql = sprintf(
-            'UPDATE `%s` SET %s WHERE %s',
-            $table,
-            implode(', ', $set),
-            implode(' AND ', $conditions)
-        );
-
-        return $this->execute($sql, array_merge(array_values($data), array_values($where)));
+        
+        $where_conditions = [];
+        foreach ($where as $key => $value) {
+            $where_conditions[] = "$key = ?";
+        }
+        
+        $sql = "UPDATE $table SET " . implode(', ', $set) . " WHERE " . implode(' AND ', $where_conditions);
+        
+        $stmt = $this->connection->prepare($sql);
+        $types = str_repeat('s', count($values));
+        $stmt->bind_param($types, ...$values);
+        
+        return $stmt->execute();
     }
-
-    public function delete(string $table, array $where): bool
-    {
+    
+    public function delete($table, $where) {
         $conditions = [];
-        foreach (array_keys($where) as $key) {
-            $conditions[] = "`{$key}` = ?";
+        $values = [];
+        foreach ($where as $key => $value) {
+            $conditions[] = "$key = ?";
+            $values[] = $value;
         }
-
-        $sql = sprintf(
-            'DELETE FROM `%s` WHERE %s',
-            $table,
-            implode(' AND ', $conditions)
-        );
-
-        return $this->execute($sql, array_values($where));
-    }
-
-    public function find(string $table, array $where, array $select = ['*']): bool|array
-    {
-        $conditions = [];
-        foreach (array_keys($where) as $key) {
-            $conditions[] = "`{$key}` = ?";
-        }
-
-        $sql = sprintf(
-            'SELECT %s FROM `%s` WHERE %s LIMIT 1',
-            implode(', ', $select),
-            $table,
-            implode(' AND ', $conditions)
-        );
-
-        $results = $this->query($sql, array_values($where));
-        return $results ? $results[0] : false;
-    }
-
-    public function findAll(string $table, array $where = [], array $select = ['*'], int $limit = 0, int $offset = 0): bool|array
-    {
-        $conditions = [];
-        foreach (array_keys($where) as $key) {
-            $conditions[] = "`{$key}` = ?";
-        }
-
-        $sql = sprintf(
-            'SELECT %s FROM `%s` %s',
-            implode(', ', $select),
-            $table,
-            count($conditions) > 0 ? 'WHERE ' . implode(' AND ', $conditions) : ''
-        );
-
-        if ($limit > 0) {
-            $sql .= " LIMIT {$limit}";
-            if ($offset > 0) {
-                $sql .= " OFFSET {$offset}";
-            }
-        }
-
-        return $this->query($sql, array_values($where));
+        
+        $sql = "DELETE FROM $table WHERE " . implode(' AND ', $conditions);
+        
+        $stmt = $this->connection->prepare($sql);
+        $types = str_repeat('s', count($values));
+        $stmt->bind_param($types, ...$values);
+        
+        return $stmt->execute();
     }
 }
